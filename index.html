@@ -4,53 +4,74 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>FRC Heatmap Scout</title>
+<!-- Styles. Colors are CSS variables so the light and dark themes just swap values. -->
 <style>
+/* Light theme tokens. --bg is the page background, --field is the canvas fallback color. The safe-area padding keeps content clear of phone notches and status bars. */
 :root{--bg:#404b9d;--card:#fff;--fg:#14171c;--mut:#666d78;--line:#d9dde3;--acc:#2f6fed;--field:#e9edf2;--blue:#3b6fe0;--red:#d9443f;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+/* Dark theme, applied automatically when the device prefers dark mode. */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101216;--card:#1a1d23;--fg:#eceff3;--mut:#9aa2ad;--line:#2c313a;--acc:#6b9bff;--field:#232831}}
+/* Dark theme forced by a data-theme="dark" attribute (manual override). */
 :root[data-theme="dark"]{--bg:#101216;--card:#1a1d23;--fg:#eceff3;--mut:#9aa2ad;--line:#2c313a;--acc:#6b9bff;--field:#232831}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
 main{max-width:900px;margin:0 auto;padding:12px}
 h1{font-size:18px;margin:4px 0 10px}
+/* Tab bar. It wraps onto extra lines on narrow phones. */
 .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 button,select,input,textarea{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 button{cursor:pointer}
+/* Highlighted look for the selected toggle or tab button. */
 button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
 input[type=number]{width:90px}
+/* touch-action:none stops the browser from scrolling or zooming while the scout drags a finger across the field. */
 canvas{width:100%;display:block;border-radius:8px;touch-action:none;background:var(--field)}
 .mut{color:var(--mut);font-size:13px}
 textarea{width:100%;height:80px;font-size:12px}
+/* Utility class that hides an element. Switching tabs toggles it on the sections. */
 .hide{display:none}
+/* Event rankings table. */
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+/* Small Delete buttons in the saved-matches list. */
 .x{padding:2px 8px}
 </style>
 </head>
 <body>
+<!-- Page layout: field picker, tab bar, then one section per tab. Only one section is visible at a time. -->
 <main>
 <h1>FRC Heatmap Scout</h1>
+<!-- Field/season picker. The script fills in its options from the FIELDS list. It also decides which season's data is shown. -->
 <div class="row"><label>Field <select id="fieldSel"></select></label></div>
+<!-- Tab buttons. Each id (tScout, tMap, ...) pairs with a section id (vScout, vMap, ...). -->
 <div class="tabs">
   <button id="tScout" class="on">Scout</button>
   <button id="tMap">Heatmap</button>
   <button id="tData">Heatmap data</button>
   <button id="tStat">Statbotics data</button>
+  <button id="tTBA">TheBlueAlliance data</button>
+  <button id="tRank">Event rankings</button>
 </div>
 
+<!-- SCOUT TAB: record a robot's start position and path on the field. -->
 <section id="vScout">
   <div class="card">
     <div class="row">
+      <!-- Team and match numbers. After saving, Match goes up by one and Team clears. -->
       <label>Team <input id="team" type="number" placeholder="2543"></label>
       <label>Match <input id="match" type="number" placeholder="1"></label>
     </div>
     <div class="row">
+      <!-- Alliance of the robot being scouted (used to flip coordinates on save) and the recording phase: Start (tap), Auto or Teleop (drag). -->
       <button id="aRed" class="on">Red</button><button id="aBlue">Blue</button>
       <span style="width:12px"></span>
       <button id="pStart" class="on">Start</button><button id="pAuto">Auto</button><button id="pTele">Teleop</button>
     </div>
+    <!-- Field canvas. Internal width is 1000 px and the height is set from the image's aspect ratio by the script. CSS scales it to fit the screen. -->
     <canvas id="scout" width="1000" height="525"></canvas>
     <p class="mut">Start: tap where the robot begins (drag to adjust). Auto/Teleop: press and drag to follow the robot, hold still where it sits, lift if you lose it. Blue side is left, red side is right.</p>
         <p class="mut">This was created by MysticCanDoThings.</p>
+    <!-- Clear removes only the current phase. Save stores the match on this device. -->
     <div class="row">
       <button id="clear">Clear phase</button>
       <button id="save">Save match</button>
@@ -59,34 +80,58 @@ textarea{width:100%;height:80px;font-size:12px}
   </div>
 </section>
 
+<!-- HEATMAP TAB: density map of where a team drove, with start markers and match replay. -->
 <section id="vMap" class="hide">
   <div class="card">
+    <!-- Filters: team, phase (all, auto, teleop), blur radius of each point, and whether to show start rings. -->
     <div class="row">
       <label>Team <select id="fTeam"></select></label>
       <label>Phase <select id="fPhase"><option value="all">All</option><option value="auto">Auto</option><option value="tele">Teleop</option></select></label>
       <label>Radius <input id="rad" type="range" min="10" max="60" value="28"></label>
       <label><input id="showStart" type="checkbox" checked> Starts</label>
     </div>
+    <!-- This one canvas shows both the static heatmap and the replay. -->
     <canvas id="heat" width="1000" height="525"></canvas>
+    <!-- Replay controls: choose a match, play or pause, playback speed, and how heat is drawn during replay. -->
     <div class="row" style="margin-top:8px">
       <label>Replay <select id="rMatch"></select></label>
       <button id="rPlay">Play</button>
       <label>Speed <select id="rSpd"><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option></select></label>
       <label>Heat <select id="rHeat"><option value="live">Builds as it plays</option><option value="team">Team total</option><option value="none">None</option></select></label>
     </div>
+    <!-- Replay scrubber (its max is set to the match length in ms) and a time readout. -->
     <div class="row"><input id="rBar" type="range" min="0" max="0" value="0" style="flex:1"><span id="rTime" class="mut">0.0 / 0.0 s</span></div>
     <p class="mut" id="heatInfo">Alliance-relative: the robot's own alliance is on the left (blue's view).</p>
   </div>
 </section>
 
+<!-- STATBOTICS TAB: intentionally blank, reserved for future use. -->
 <section id="vStat" class="hide"></section>
+<!-- THEBLUEALLIANCE TAB: intentionally blank, reserved for future use. -->
+<section id="vTBA" class="hide"></section>
+<!-- EVENT RANKINGS TAB: search The Blue Alliance for an event and show its rankings. Needs a free TBA read key. -->
+<section id="vRank" class="hide">
+  <div class="card">
+    <!-- API key box. The key is saved in this browser only (localStorage), never in the code. -->
+    <div class="row"><label>TBA key <input id="tbaKey" type="password" placeholder="paste key" style="width:220px"></label><button id="keySave">Save key</button></div>
+    <p class="mut">Get a free read key at thebluealliance.com/account. It is stored only on this device.</p>
+    <!-- Search by event name, city, or code. -->
+    <div class="row"><input id="evQ" placeholder="Event name or code, e.g. casd or 2026casd" style="flex:1;min-width:200px"><button id="evGo">Search</button></div>
+    <!-- evInfo holds status messages, evPick holds buttons when several events match, evTable holds the rankings table. -->
+    <p id="evInfo" class="mut"></p>
+    <div id="evPick"></div>
+    <div id="evTable" style="overflow-x:auto"></div>
+  </div>
+</section>
 
+<!-- HEATMAP DATA TAB: saved matches for the selected season, plus JSON export and import for moving data between devices. -->
 <section id="vData" class="hide">
   <div class="card">
-    <div class="row"><b>Saved matches</b></div>
+    <div class="row"><b id="listTitle">Saved matches</b></div>
     <div id="list"></div>
   </div>
   <div class="card">
+    <!-- Export writes every saved match (all seasons) into the box. Import merges pasted JSON in. -->
     <div class="row"><button id="exp">Export JSON</button><button id="imp">Import JSON</button></div>
     <textarea id="io" placeholder="Export fills this box. Paste JSON here and press Import to merge."></textarea>
   </div>
@@ -94,32 +139,61 @@ textarea{width:100%;height:80px;font-size:12px}
 </main>
 
 <script>
+// ===== APP OVERVIEW =====
+// Each saved match looks like:
+//   {team, match, alliance, field, start:{x,y} or null, auto:[{x,y,t}], tele:[{x,y,t}]}
+// x and y are 0-1 fractions of the field image, stored alliance-relative (see the flip in the save handler), so screen size never matters.
+// t is milliseconds since the first point of that phase.
+// Everything is stored in this browser's localStorage. Nothing is sent to a server except The Blue Alliance searches.
+// W is the fixed internal canvas width in pixels. H is the height, recalculated from each field image's shape. KEY is the localStorage key for matches.
 const W=1000,KEY='frcHeatmapMatches';let H=525;
+// Shorthand for document.getElementById.
 const $=id=>document.getElementById(id);
+// matches holds every saved match (all seasons). alliance and phase are the current Scout tab selections.
 let matches=[],alliance='red',phase='start';
+// cur holds the points for the match being recorded (not yet saved). down, pos, timer track the finger while dragging. t0 stores each phase's start time for timestamps.
 let cur={auto:[],tele:[],start:null},down=false,pos=null,timer=null,t0={};
+// Load saved matches from this device. Fall back to an empty list if storage is blocked or corrupted.
 try{matches=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){matches=[]}
+// Write the matches list back to localStorage. Errors are ignored (for example in private browsing).
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(matches))}catch(e){}}
 
+// Field image object. When a new image finishes loading, resize both canvases to its aspect ratio and redraw whatever is on screen.
 const fieldImg=new Image();fieldImg.onload=()=>{H=Math.round(W*fieldImg.naturalHeight/fieldImg.naturalWidth);$('scout').height=H;$('heat').height=H;drawTrace();if(!$('vMap').classList.contains('hide'))renderHeat()};
+// Seasons: [image path, label]. The label doubles as the season year. To add a season, add a row here and put the image in images/.
 const FIELDS=[['images/field26.png','2026'],['images/field25.png','2025'],['images/field24.png','2024'],['images/field23.png','2023'],['images/field22.png','2022']];
+// The alliance shown on the LEFT in these field images. Data from the other alliance is rotated 180 degrees so every team's own side is always on the left.
 const LEFT='blue';
+// Season key of a match. Matches with no field tag, or the old 'field.png', count as the first (newest) season.
+const fk=m=>!m.field||m.field==='field.png'?FIELDS[0][0]:m.field;
+// inSeason: does a match belong to the selected field/season? sm(): only the matches for the selected season.
+const inSeason=m=>fk(m)===fieldSrc,sm=()=>matches.filter(inSeason);
+// Label (year) of the selected field, such as "2026".
+function seasonYear(){return(FIELDS.find(f=>f[0]===fieldSrc)||FIELDS[0])[1]}
+// Currently selected field image. Defaults to the first entry in FIELDS.
 let fieldSrc='images/field26.png';
+// Restore the field picked last time, if it is still a valid option.
 try{const sv=localStorage.getItem('frcField');if(sv&&FIELDS.some(f=>f[0]===sv))fieldSrc=sv}catch(e){}
+// Fill the dropdown and set its value.
 $('fieldSel').innerHTML=FIELDS.map(f=>'<option value="'+f[0]+'">'+f[1]+'</option>').join('');
 $('fieldSel').value=fieldSrc;
-$('fieldSel').onchange=()=>{fieldSrc=$('fieldSel').value;try{localStorage.setItem('frcField',fieldSrc)}catch(e){}fieldImg.src=fieldSrc};
+// When the picker changes: remember the choice, load the new image, and refresh whichever data tab is visible so it shows the new season.
+$('fieldSel').onchange=()=>{fieldSrc=$('fieldSel').value;try{localStorage.setItem('frcField',fieldSrc)}catch(e){}fieldImg.src=fieldSrc;if(!$('vMap').classList.contains('hide'))fillTeams();if(!$('vData').classList.contains('hide'))renderList()};
+// Start loading the image (this triggers the onload handler above).
 fieldImg.src=fieldSrc;
+// Clear a canvas and draw the field image scaled to fill it.
 function drawField(c){
   const g=c.getContext('2d');
   g.clearRect(0,0,W,H);
   if(fieldImg.complete&&fieldImg.naturalWidth)g.drawImage(fieldImg,0,0,W,H);
 }
+// Draw a ring marker (white outline, colored ring, center dot) at pixel x,y. Used for start positions.
 function marker(g,x,y,col){
   g.lineWidth=5;g.strokeStyle='#fff';g.beginPath();g.arc(x,y,16,0,7);g.stroke();
   g.lineWidth=3;g.strokeStyle=col;g.beginPath();g.arc(x,y,16,0,7);g.stroke();
   g.fillStyle=col;g.beginPath();g.arc(x,y,5,0,7);g.fill();
 }
+// Redraw the Scout canvas: field, recorded points (gold = auto, blue = teleop), the start marker, and the point counts.
 function drawTrace(){
   const c=$('scout');drawField(c);const g=c.getContext('2d');
   [['auto','#e8a300'],['tele','#2f6fed']].forEach(([p,col])=>{
@@ -129,16 +203,19 @@ function drawTrace(){
   if(cur.start)marker(g,cur.start.sx*W,cur.start.sy*H,'#00b36b');
   $('count').textContent=(cur.start?'Start set · ':'No start · ')+'Auto '+cur.auto.length+' pts · Teleop '+cur.tele.length+' pts';
 }
+// Convert a pointer event into 0-1 field coordinates, clamped to the canvas edges.
 function evPos(e){
   const r=$('scout').getBoundingClientRect();
   return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))};
 }
+// Record one point for the current phase. It runs on touch-down and every 120 ms while the finger is held, so staying still keeps adding points (time spent = heat).
 function sample(){
   if(!down||!pos)return;
   if(t0[phase]==null)t0[phase]=Date.now();
   cur[phase].push({sx:pos.x,sy:pos.y,t:Date.now()-t0[phase]});
   drawTrace();
 }
+// Pointer handling on the field canvas. Touch-down starts recording (or sets the start marker in Start phase), moving updates the position, and lifting or cancelling stops the sampling timer.
 const sc=$('scout');
 sc.addEventListener('pointerdown',e=>{down=true;pos=evPos(e);sc.setPointerCapture(e.pointerId);
   if(phase==='start'){cur.start={sx:pos.x,sy:pos.y};drawTrace();return}
@@ -147,11 +224,14 @@ sc.addEventListener('pointermove',e=>{if(!down)return;pos=evPos(e);if(phase==='s
 const stop=()=>{down=false;clearInterval(timer)};
 sc.addEventListener('pointerup',stop);sc.addEventListener('pointercancel',stop);
 
+// Helper that highlights one button in a toggle group.
 function pick(ids,on){ids.forEach(id=>$(id).classList.toggle('on',id===on))}
+// Toggle buttons for alliance and phase, and the Clear button.
 $('aRed').onclick=()=>{alliance='red';pick(['aRed','aBlue'],'aRed')};
 $('aBlue').onclick=()=>{alliance='blue';pick(['aRed','aBlue'],'aBlue')};
 [['pStart','start'],['pAuto','auto'],['pTele','tele']].forEach(([id,p])=>$(id).onclick=()=>{phase=p;pick(['pStart','pAuto','pTele'],id)});
 $('clear').onclick=()=>{if(phase==='start')cur.start=null;else{cur[phase]=[];delete t0[phase]}drawTrace()};
+// Save the match: validate inputs, rotate the other alliance's points 180 degrees so all data is alliance-relative, tag it with the current field, store it, reset for the next match, and bump the match number.
 $('save').onclick=()=>{
   const team=$('team').value,match=$('match').value;
   if(!team||!match){alert('Enter team and match number');return}
@@ -161,21 +241,26 @@ $('save').onclick=()=>{
   $('match').value=+match+1;$('team').value='';
 };
 
+// Tab switching: show the chosen section, hide the others, highlight its button, and refresh data-driven tabs.
 function show(v){
-  ['Scout','Map','Data','Stat'].forEach(n=>{$('v'+n).classList.toggle('hide',n!==v);$('t'+n).classList.toggle('on',n===v)});
+  ['Scout','Map','Data','Stat','TBA','Rank'].forEach(n=>{$('v'+n).classList.toggle('hide',n!==v);$('t'+n).classList.toggle('on',n===v)});
   if(v==='Map'){fillTeams();renderHeat()}
   if(v==='Data')renderList();
 }
-$('tScout').onclick=()=>show('Scout');$('tMap').onclick=()=>show('Map');$('tData').onclick=()=>show('Data');$('tStat').onclick=()=>show('Stat');
+// Tab button click handlers.
+$('tScout').onclick=()=>show('Scout');$('tMap').onclick=()=>show('Map');$('tData').onclick=()=>show('Data');$('tStat').onclick=()=>show('Stat');$('tTBA').onclick=()=>show('TBA');$('tRank').onclick=()=>show('Rank');
 
+// Fill the Heatmap team dropdown with teams that have data in the selected season, keeping the previous selection if possible.
 function fillTeams(){
   const sel=$('fTeam'),old=sel.value;
-  const teams=[...new Set(matches.map(m=>m.team))].sort((a,b)=>a-b);
+  const teams=[...new Set(sm().map(m=>m.team))].sort((a,b)=>a-b);
   sel.innerHTML=teams.map(t=>'<option>'+t+'</option>').join('')||'<option value="">No data</option>';
   if(teams.map(String).includes(old))sel.value=old;
   fillRM();
 }
+// Color lookup table: maps heat intensity (0-255) to a color running from blue (low) through green and yellow to red (high).
 const PAL=[...Array(256)].map((_,k)=>hsl((1-Math.min(1,k/255*1.6))*240,1,.5));
+// Build the heat image for a list of points: stamp a soft radial gradient at each point onto a transparent canvas so overlapping areas build up intensity, then recolor each pixel with the palette. Returns an offscreen canvas.
 function heatLayer(pts){
   const off=document.createElement('canvas');off.width=W;off.height=H;
   const o=off.getContext('2d'),r=+$('rad').value;
@@ -184,29 +269,35 @@ function heatLayer(pts){
   for(let i=0;i<d.length;i+=4){const k=d[i+3];if(k<8){d[i+3]=0;continue}const c=PAL[k];d[i]=c[0];d[i+1]=c[1];d[i+2]=c[2];d[i+3]=Math.min(210,k*1.57|0)}
   o.putImageData(img,0,0);return off;
 }
+// Flatten the points of several matches, filtered by phase ('all', 'auto' or 'tele').
 const ptsOf=(ms,ph)=>ms.flatMap(m=>(ph==='tele'?[]:m.auto).concat(ph==='auto'?[]:m.tele));
+// Draw the Heatmap tab: field, heat for the chosen team and phase, and start rings. If a replay match is selected, draw the replay instead.
 function renderHeat(){
   rp.cache=null;rp.liveN=-1;
   if($('rMatch').value!==''){drawReplay();return}
   const c=$('heat'),g=c.getContext('2d');drawField(c);
-  const ms=matches.filter(m=>m.team===+$('fTeam').value),pts=ptsOf(ms,$('fPhase').value);
+  const ms=sm().filter(m=>m.team===+$('fTeam').value),pts=ptsOf(ms,$('fPhase').value);
   $('heatInfo').textContent=ms.length?(ms.length+' match(es), '+pts.length+' samples. Left side = own alliance side (blue\'s view).'):'Save a match to see a heatmap.';
   if(pts.length)g.drawImage(heatLayer(pts),0,0);
   drawStarts(g,ms);
 }
+// Draw green start rings for each match when the Starts box is checked.
 function drawStarts(g,ms){
   if(!$('showStart').checked)return;
   ms.forEach(m=>{if(m.start)marker(g,m.start.x*W,m.start.y*H,'#00b36b')});
 }
+// Replay state: pts = timeline points, dur = length in ms, t = current time, playing/last = animation state, cache/live/liveN = cached heat layers so they are not rebuilt every frame.
 const rp={pts:[],dur:0,t:0,playing:false,last:0,cache:null,live:null,liveN:-1};
+// Fill the Replay dropdown with the selected team's matches (this season) and stop any playback.
 function fillRM(){
-  const ms=matches.filter(m=>m.team===+$('fTeam').value);
+  const ms=sm().filter(m=>m.team===+$('fTeam').value);
   $('rMatch').innerHTML='<option value="">Off</option>'+ms.map((m,i)=>'<option value="'+i+'">Match '+m.match+'</option>').join('');
   rp.playing=false;$('rPlay').textContent='Play';
 }
+// Load a match for replay: build one timeline from the auto points then the teleop points (teleop is shifted to start after auto). Older matches without timestamps are assumed to be 120 ms apart.
 function loadReplay(){
   rp.playing=false;$('rPlay').textContent='Play';rp.t=0;rp.cache=null;rp.liveN=-1;
-  const ms=matches.filter(m=>m.team===+$('fTeam').value),m=ms[+$('rMatch').value];
+  const ms=sm().filter(m=>m.team===+$('fTeam').value),m=ms[+$('rMatch').value];
   if(!m){rp.pts=[];rp.dur=0;$('rBar').max=0;$('rBar').value=0;renderHeat();return}
   const A=m.auto.map((p,i)=>({x:p.x,y:p.y,t:p.t??i*120,a:1}));
   const off=A.length?A[A.length-1].t+500:0;
@@ -214,9 +305,10 @@ function loadReplay(){
   rp.pts=A.concat(T);rp.dur=rp.pts.length?rp.pts[rp.pts.length-1].t:0;
   $('rBar').max=rp.dur;$('rBar').value=0;drawReplay();
 }
+// Draw one replay frame at time rp.t: the path so far (pink = auto, white = teleop, with breaks where the scout lifted their finger), heat on top, the start ring, and a dot at the robot's latest position.
 function drawReplay(){
   const c=$('heat'),g=c.getContext('2d');drawField(c);
-  const ms=matches.filter(m=>m.team===+$('fTeam').value),m=ms[+$('rMatch').value];
+  const ms=sm().filter(m=>m.team===+$('fTeam').value),m=ms[+$('rMatch').value];
   if(!m)return;
   const seen=rp.pts.filter(p=>p.t<=rp.t),mode=$('rHeat').value;
   g.lineWidth=5;g.lineJoin='round';g.lineCap='round';
@@ -229,6 +321,7 @@ function drawReplay(){
   $('rTime').textContent=(rp.t/1000).toFixed(1)+' / '+(rp.dur/1000).toFixed(1)+' s';
   $('heatInfo').textContent='Replaying match '+m.match+': pink = auto, white = teleop. Heat sits over the path.';
 }
+// Animation loop: advance time by the real elapsed time times the speed setting, then redraw until the match ends.
 function tick(ts){
   if(!rp.playing)return;
   rp.t+=(ts-rp.last)*(+$('rSpd').value);rp.last=ts;
@@ -236,6 +329,7 @@ function tick(ts){
   $('rBar').value=rp.t;drawReplay();
   if(rp.playing)requestAnimationFrame(tick);
 }
+// Replay control handlers: pick a match, change heat mode, scrub, and play/pause (restarts from 0 if the match already finished).
 $('rMatch').onchange=loadReplay;
 $('rHeat').onchange=()=>{rp.cache=null;rp.liveN=-1;if($('rMatch').value!=='')drawReplay()};
 $('rBar').oninput=()=>{rp.t=+$('rBar').value;drawReplay()};
@@ -245,22 +339,88 @@ $('rPlay').onclick=()=>{
   if(rp.t>=rp.dur)rp.t=0;
   rp.playing=true;rp.last=performance.now();$('rPlay').textContent='Pause';requestAnimationFrame(tick);
 };
+// Convert an HSL color to [r,g,b]. Used to build the palette.
 function hsl(h,s,l){
   const k=n=>(n+h/30)%12,a=s*Math.min(l,1-l),f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));
   return[f(0)*255|0,f(8)*255|0,f(4)*255|0];
 }
+// Heatmap filter handlers: changing the team resets the replay choices, other filters just redraw.
 $('fTeam').onchange=()=>{fillRM();renderHeat()};
 $('fPhase').onchange=$('rad').oninput=$('showStart').onchange=renderHeat;
 
+// Heatmap data tab: list this season's saved matches with Delete buttons. Delete uses the match's index in the full list, so other seasons are untouched.
 function renderList(){
-  $('list').innerHTML=matches.length?matches.map((m,i)=>'<div class="row"><span>Team '+m.team+' · Match '+m.match+' · '+m.alliance+(m.start?' · start':'')+' · '+(m.auto.length+m.tele.length)+' pts</span><button class="x" data-i="'+i+'">Delete</button></div>').join(''):'<span class="mut">Nothing saved yet.</span>';
+  $('listTitle').textContent='Saved matches · '+seasonYear();
+  $('list').innerHTML=matches.some(inSeason)?matches.map((m,i)=>!inSeason(m)?'':'<div class="row"><span>Team '+m.team+' · Match '+m.match+' · '+m.alliance+(m.start?' · start':'')+' · '+(m.auto.length+m.tele.length)+' pts</span><button class="x" data-i="'+i+'">Delete</button></div>').join(''):'<span class="mut">Nothing saved yet.</span>';
   document.querySelectorAll('.x').forEach(b=>b.onclick=()=>{matches.splice(+b.dataset.i,1);persist();renderList()});
 }
+// Export: dump every saved match as JSON into the text box. Import: merge pasted JSON into the saved matches.
 $('exp').onclick=()=>{$('io').value=JSON.stringify(matches);$('io').select()};
 $('imp').onclick=()=>{
   try{const a=JSON.parse($('io').value);if(Array.isArray(a)){matches=matches.concat(a);persist();renderList();$('io').value=''}}
   catch(e){alert('Invalid JSON')}
 };
+// ===== THE BLUE ALLIANCE (event rankings) =====
+// TBA is the API base URL. evCache remembers each season's event list so repeat searches don't refetch it.
+const TBA='https://www.thebluealliance.com/api/v3',evCache={};
+// Escape text before putting it into HTML so event names can't inject markup.
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Load and save the TBA API key (stored on this device only).
+try{$('tbaKey').value=localStorage.getItem('frcTbaKey')||''}catch(e){}
+$('keySave').onclick=()=>{try{localStorage.setItem('frcTbaKey',$('tbaKey').value.trim())}catch(e){}$('evInfo').textContent='Key saved on this device.'};
+// Call the TBA API with the saved key. Turns common failures (no key, bad key, not found) into readable errors.
+async function tba(path){
+  const k=$('tbaKey').value.trim();
+  if(!k)throw new Error('Paste your TBA API key above first.');
+  const r=await fetch(TBA+path,{headers:{'X-TBA-Auth-Key':k}});
+  if(r.status===401)throw new Error('TBA rejected the key.');
+  if(r.status===404)throw new Error('Event not found.');
+  if(!r.ok)throw new Error('TBA error '+r.status);
+  return r.json();
+}
+// Handle a search. A code starting with a year (like 2026casd) is used directly. Otherwise load the season's event list and match by short code, then by name or city. If several events match, show buttons to choose one.
+async function evSearch(){
+  const q=$('evQ').value.trim().toLowerCase();
+  $('evPick').innerHTML='';$('evTable').innerHTML='';
+  if(!q)return;
+  try{
+    let key=null;
+    if(/^\d{4}[a-z0-9]+$/.test(q))key=q;
+    else{
+      const y=seasonYear();
+      const list=evCache[y]||(evCache[y]=await tba('/events/'+y+'/simple'));
+      const hit=list.find(e=>e.key===y+q);
+      if(hit)key=hit.key;
+      else{
+        const hits=list.filter(e=>e.name.toLowerCase().includes(q)||(e.city||'').toLowerCase().includes(q)).slice(0,12);
+        if(!hits.length){$('evInfo').textContent='No '+y+' events match "'+q+'".';return}
+        if(hits.length>1){
+          $('evInfo').textContent='Pick an event:';
+          $('evPick').innerHTML=hits.map(e=>'<div class="row"><button data-k="'+esc(e.key)+'">'+esc(e.name)+' ('+esc(e.key)+')</button></div>').join('');
+          $('evPick').querySelectorAll('button').forEach(b=>b.onclick=()=>loadRank(b.dataset.k));
+          return;
+        }
+        key=hits[0].key;
+      }
+    }
+    await loadRank(key);
+  }catch(e){$('evInfo').textContent=e.message}
+}
+// Fetch and show an event's rankings: rank, team, record, matches played, plus the event's own sort columns (their names come from sort_order_info).
+async function loadRank(key){
+  $('evPick').innerHTML='';
+  try{
+    const d=await tba('/event/'+key+'/rankings'),rk=d&&d.rankings;
+    if(!rk||!rk.length){$('evInfo').textContent='No rankings posted yet for '+key+'.';$('evTable').innerHTML='';return}
+    const info=(d.sort_order_info||[]).map(x=>x.name);
+    $('evInfo').textContent='Rankings for '+key+' ('+rk.length+' teams)';
+    let h='<table><tr><th>Rank</th><th>Team</th><th>W-L-T</th><th>Played</th>'+info.map(n=>'<th>'+esc(n)+'</th>').join('')+'</tr>';
+    rk.forEach(r=>{const c=r.record||{};h+='<tr><td>'+r.rank+'</td><td>'+esc(r.team_key.slice(3))+'</td><td>'+(c.wins??'')+'-'+(c.losses??'')+'-'+(c.ties??'')+'</td><td>'+(r.matches_played??'')+'</td>'+(r.sort_orders||[]).map(v=>'<td>'+(typeof v==='number'?+v.toFixed(2):esc(v))+'</td>').join('')+'</tr>'});
+    $('evTable').innerHTML=h+'</table>';
+  }catch(e){$('evInfo').textContent=e.message}
+}
+// Search button and Enter key. The last line draws the Scout canvas for the first time on page load.
+$('evGo').onclick=evSearch;$('evQ').onkeydown=e=>{if(e.key==='Enter')evSearch()};
 drawTrace();
 </script>
 </body>
