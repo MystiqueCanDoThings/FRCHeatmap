@@ -6,13 +6,13 @@
 <title>FRC Heatmap Scout</title>
 <style>
 :root{--bg:#404b9d;--card:#fff;--fg:#14171c;--mut:#666d78;--line:#d9dde3;--acc:#2f6fed;--field:#e9edf2;--blue:#3b6fe0;--red:#d9443f;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101216;--card:#1a1d23;--fg:#eceff3;--mutf:#9aa2ad;--line:#2c313a;--acc:#6b9bff;--field:#232831}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101216;--card:#1a1d23;--fg:#eceff3;--mut:#9aa2ad;--line:#2c313a;--acc:#6b9bff;--field:#232831}}
 :root[data-theme="dark"]{--bg:#101216;--card:#1a1d23;--fg:#eceff3;--mut:#9aa2ad;--line:#2c313a;--acc:#6b9bff;--field:#232831}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
 main{max-width:900px;margin:0 auto;padding:12px}
 h1{font-size:18px;margin:4px 0 10px}
-.tabs{display:flex;gap:6px;margin-bottom:10px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 button,select,input,textarea{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 button{cursor:pointer}
 button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
@@ -29,10 +29,12 @@ textarea{width:100%;height:80px;font-size:12px}
 <body>
 <main>
 <h1>FRC Heatmap Scout</h1>
+<div class="row"><label>Field <select id="fieldSel"></select></label></div>
 <div class="tabs">
   <button id="tScout" class="on">Scout</button>
   <button id="tMap">Heatmap</button>
-  <button id="tData">Data</button>
+  <button id="tData">Heatmap data</button>
+  <button id="tStat">Statbotics data</button>
 </div>
 
 <section id="vScout">
@@ -47,7 +49,7 @@ textarea{width:100%;height:80px;font-size:12px}
       <button id="pStart" class="on">Start</button><button id="pAuto">Auto</button><button id="pTele">Teleop</button>
     </div>
     <canvas id="scout" width="1000" height="525"></canvas>
-    <p class="mut">Start: tap where the robot begins (drag to adjust). Auto/Teleop: press and drag to follow the robot, hold still where it sits, lift if you lose it. Red side is left, blue side is right.</p>
+    <p class="mut">Start: tap where the robot begins (drag to adjust). Auto/Teleop: press and drag to follow the robot, hold still where it sits, lift if you lose it. Blue side is left, red side is right.</p>
         <p class="mut">This was created by MysticCanDoThings.</p>
     <div class="row">
       <button id="clear">Clear phase</button>
@@ -73,9 +75,11 @@ textarea{width:100%;height:80px;font-size:12px}
       <label>Heat <select id="rHeat"><option value="live">Builds as it plays</option><option value="team">Team total</option><option value="none">None</option></select></label>
     </div>
     <div class="row"><input id="rBar" type="range" min="0" max="0" value="0" style="flex:1"><span id="rTime" class="mut">0.0 / 0.0 s</span></div>
-    <p class="mut" id="heatInfo">Alliance-relative: the robot's own alliance is on the left (red's view).</p>
+    <p class="mut" id="heatInfo">Alliance-relative: the robot's own alliance is on the left (blue's view).</p>
   </div>
 </section>
+
+<section id="vStat" class="hide"></section>
 
 <section id="vData" class="hide">
   <div class="card">
@@ -98,7 +102,14 @@ try{matches=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){matches=[]}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(matches))}catch(e){}}
 
 const fieldImg=new Image();fieldImg.onload=()=>{H=Math.round(W*fieldImg.naturalHeight/fieldImg.naturalWidth);$('scout').height=H;$('heat').height=H;drawTrace();if(!$('vMap').classList.contains('hide'))renderHeat()};
-fieldImg.src='field.png';
+const FIELDS=[['images/field26.png','2026'],['images/field25.png','2025'],['images/field24.png','2024'],['images/field23.png','2023'],['images/field22.png','2022']];
+const LEFT='blue';
+let fieldSrc='images/field26.png';
+try{const sv=localStorage.getItem('frcField');if(sv&&FIELDS.some(f=>f[0]===sv))fieldSrc=sv}catch(e){}
+$('fieldSel').innerHTML=FIELDS.map(f=>'<option value="'+f[0]+'">'+f[1]+'</option>').join('');
+$('fieldSel').value=fieldSrc;
+$('fieldSel').onchange=()=>{fieldSrc=$('fieldSel').value;try{localStorage.setItem('frcField',fieldSrc)}catch(e){}fieldImg.src=fieldSrc};
+fieldImg.src=fieldSrc;
 function drawField(c){
   const g=c.getContext('2d');
   g.clearRect(0,0,W,H);
@@ -144,18 +155,18 @@ $('clear').onclick=()=>{if(phase==='start')cur.start=null;else{cur[phase]=[];del
 $('save').onclick=()=>{
   const team=$('team').value,match=$('match').value;
   if(!team||!match){alert('Enter team and match number');return}
-  const flip=p=>alliance==='blue'?{x:1-p.sx,y:1-p.sy,t:p.t}:{x:p.sx,y:p.sy,t:p.t};
-  matches.push({team:+team,match:+match,alliance,start:cur.start?flip(cur.start):null,auto:cur.auto.map(flip),tele:cur.tele.map(flip)});
+  const flip=p=>alliance!==LEFT?{x:1-p.sx,y:1-p.sy,t:p.t}:{x:p.sx,y:p.sy,t:p.t};
+  matches.push({team:+team,match:+match,alliance,field:fieldSrc,start:cur.start?flip(cur.start):null,auto:cur.auto.map(flip),tele:cur.tele.map(flip)});
   persist();cur={auto:[],tele:[],start:null};t0={};drawTrace();
   $('match').value=+match+1;$('team').value='';
 };
 
 function show(v){
-  ['Scout','Map','Data'].forEach(n=>{$('v'+n).classList.toggle('hide',n!==v);$('t'+n).classList.toggle('on',n===v)});
+  ['Scout','Map','Data','Stat'].forEach(n=>{$('v'+n).classList.toggle('hide',n!==v);$('t'+n).classList.toggle('on',n===v)});
   if(v==='Map'){fillTeams();renderHeat()}
   if(v==='Data')renderList();
 }
-$('tScout').onclick=()=>show('Scout');$('tMap').onclick=()=>show('Map');$('tData').onclick=()=>show('Data');
+$('tScout').onclick=()=>show('Scout');$('tMap').onclick=()=>show('Map');$('tData').onclick=()=>show('Data');$('tStat').onclick=()=>show('Stat');
 
 function fillTeams(){
   const sel=$('fTeam'),old=sel.value;
@@ -179,7 +190,7 @@ function renderHeat(){
   if($('rMatch').value!==''){drawReplay();return}
   const c=$('heat'),g=c.getContext('2d');drawField(c);
   const ms=matches.filter(m=>m.team===+$('fTeam').value),pts=ptsOf(ms,$('fPhase').value);
-  $('heatInfo').textContent=ms.length?(ms.length+' match(es), '+pts.length+' samples. Left side = own alliance side (red\'s view).'):'Save a match to see a heatmap.';
+  $('heatInfo').textContent=ms.length?(ms.length+' match(es), '+pts.length+' samples. Left side = own alliance side (blue\'s view).'):'Save a match to see a heatmap.';
   if(pts.length)g.drawImage(heatLayer(pts),0,0);
   drawStarts(g,ms);
 }
