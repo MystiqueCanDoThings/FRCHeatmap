@@ -6,7 +6,7 @@
 <title>FRC Heatmap Scout</title>
 <style>
 :root{--bg:#404b9d;--card:#fff;--fg:#14171c;--mut:#666d78;--line:#d9dde3;--acc:#2f6fed;--field:#e9edf2;--blue:#3b6fe0;--red:#d9443f;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101216;--card:#1a1d23;--fg:#eceff3;--mut:#9aa2ad;--line:#2c313a;--acc:#6b9bff;--field:#232831}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#101216;--card:#1a1d23;--fg:#eceff3;--mutf:#9aa2ad;--line:#2c313a;--acc:#6b9bff;--field:#232831}}
 :root[data-theme="dark"]{--bg:#101216;--card:#1a1d23;--fg:#eceff3;--mut:#9aa2ad;--line:#2c313a;--acc:#6b9bff;--field:#232831}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
@@ -98,7 +98,7 @@ try{matches=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){matches=[]}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(matches))}catch(e){}}
 
 const fieldImg=new Image();fieldImg.onload=()=>{H=Math.round(W*fieldImg.naturalHeight/fieldImg.naturalWidth);$('scout').height=H;$('heat').height=H;drawTrace();if(!$('vMap').classList.contains('hide'))renderHeat()};
-fieldImg.src='field26.png';
+fieldImg.src='field.png';
 function drawField(c){
   const g=c.getContext('2d');
   g.clearRect(0,0,W,H);
