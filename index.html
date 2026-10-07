@@ -98,7 +98,7 @@ try{matches=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){matches=[]}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(matches))}catch(e){}}
 
 const fieldImg=new Image();fieldImg.onload=()=>{H=Math.round(W*fieldImg.naturalHeight/fieldImg.naturalWidth);$('scout').height=H;$('heat').height=H;drawTrace();if(!$('vMap').classList.contains('hide'))renderHeat()};
-fieldImg.src='field.png';
+fieldImg.src='field26.png';
 function drawField(c){
   const g=c.getContext('2d');
   g.clearRect(0,0,W,H);
