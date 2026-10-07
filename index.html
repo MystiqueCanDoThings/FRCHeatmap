@@ -47,10 +47,12 @@ table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;b
 <div class="tabs">
   <button id="tScout" class="on">Scout</button>
   <button id="tMap">Heatmap</button>
-  <button id="tData">Heatmap data</button>
-  <button id="tStat">Statbotics data</button>
+  <button id="tStat">Statbotics data (EPA)</button>
   <button id="tTBA">TheBlueAlliance data</button>
   <button id="tRank">Event rankings</button>
+  <button id="tPred">Match Predictor</button>
+  <button id="tSet">Settings</button>
+    <button id="tData">Heatmap Import/Export</button>
 </div>
 
 <!-- SCOUT TAB: record a robot's start position and path on the field. -->
@@ -58,8 +60,8 @@ table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;b
   <div class="card">
     <div class="row">
       <!-- Team and match numbers. After saving, Match goes up by one and Team clears. -->
-      <label>Team <input id="team" type="number" placeholder="2543"></label>
-      <label>Match <input id="match" type="number" placeholder="1"></label>
+      <label>Team (Number) <input id="team" type="number" placeholder="2543"></label>
+      <label>Match <input id="match" type="number" placeholder="23"></label>
     </div>
     <div class="row">
       <!-- Alliance of the robot being scouted (used to flip coordinates on save) and the recording phase: Start (tap), Auto or Teleop (drag). -->
@@ -109,6 +111,10 @@ table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;b
 <section id="vStat" class="hide"></section>
 <!-- THEBLUEALLIANCE TAB: intentionally blank, reserved for future use. -->
 <section id="vTBA" class="hide"></section>
+<!-- THEBLUEALLIANCE TAB: intentionally blank, reserved for future use. -->
+<section id="vSet" class="hide"></section>
+<!-- THEBLUEALLIANCE TAB: intentionally blank, reserved for future use. -->
+<section id="vPred" class="hide"></section>
 <!-- EVENT RANKINGS TAB: search The Blue Alliance for an event and show its rankings. Needs a free TBA read key. -->
 <section id="vRank" class="hide">
   <div class="card">
@@ -243,12 +249,12 @@ $('save').onclick=()=>{
 
 // Tab switching: show the chosen section, hide the others, highlight its button, and refresh data-driven tabs.
 function show(v){
-  ['Scout','Map','Data','Stat','TBA','Rank'].forEach(n=>{$('v'+n).classList.toggle('hide',n!==v);$('t'+n).classList.toggle('on',n===v)});
+  ['Scout','Map','Data','Stat','TBA','Rank', 'Set','Pred'].forEach(n=>{$('v'+n).classList.toggle('hide',n!==v);$('t'+n).classList.toggle('on',n===v)});
   if(v==='Map'){fillTeams();renderHeat()}
   if(v==='Data')renderList();
 }
 // Tab button click handlers.
-$('tScout').onclick=()=>show('Scout');$('tMap').onclick=()=>show('Map');$('tData').onclick=()=>show('Data');$('tStat').onclick=()=>show('Stat');$('tTBA').onclick=()=>show('TBA');$('tRank').onclick=()=>show('Rank');
+$('tScout').onclick=()=>show('Scout');$('tMap').onclick=()=>show('Map');$('tData').onclick=()=>show('Data');$('tStat').onclick=()=>show('Stat');$('tTBA').onclick=()=>show('TBA');$('tRank').onclick=()=>show('Rank');$('tPred').onclick=()=>show('Pred');$('tSet').onclick=()=>show('Set');
 
 // Fill the Heatmap team dropdown with teams that have data in the selected season, keeping the previous selection if possible.
 function fillTeams(){
