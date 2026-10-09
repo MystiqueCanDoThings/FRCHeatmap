@@ -13,7 +13,8 @@ Manny Machado - "There's too many stats." I agree so too but I prefer having mor
 - Strategy Whiteboard
 - Automated Heatmap tracking
 - Define robot types in event tab. (Turret, Dumper, Telescope, With climber)
-- Ability to upload data to a database to use later, so data no longer relies on the device that logged it 
+- Ability to upload data to a database to use later, so data no longer relies on the device that logged it
+- Have a legitimate website instead of relying on GitHub Pages
 
 ### Bugs that are known or things in need of change
 - Change the green dot to the size of a robot for better scouting for the heatmap
