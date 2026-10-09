@@ -1,14 +1,19 @@
-# **Hello User!**
+# **Welcome to TitanScout**
 
-This is FRCHeatMap. This program is used for the FRC Season Rebuilt for this moment. 
-This to show where a particular team's robot is in a match. 
-Teams tend to rely on a certain zone for their shooting/scoring. 
-Using this heatmap, defense could be used on a hot team's scoring zone. 
+This program is used for the most elite scouting for FRC.
 
 Manny Machado - "There's too many stats." I agree so too but I prefer having more statistics and numbers.
 
+## Fixes and Features
 
 ### Future Updates:
 - EPA tracker. Powered by Statbotics data
 - Match Predictor. Input the event and match and it will give you the win probability and as well as projected scores similar to Statbotics
 - Event page for the user to click on the event, and from there it will give you its respective data
+- Strategy Whiteboard
+- Automated Heatmap tracking
+- Define robot types in event tab. (Turret, Dumper, Telescope, With climber)
+- Ability to upload data to a database to use later, so data no longer relies on the device that logged it 
+
+### Bugs that are known or things in need of change
+- Change the green dot to the size of a robot for better scouting for the heatmap
