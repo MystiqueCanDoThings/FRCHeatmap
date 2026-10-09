@@ -196,11 +196,11 @@ function drawField(c){
   g.clearRect(0,0,W,H);
   if(fieldImg.complete&&fieldImg.naturalWidth)g.drawImage(fieldImg,0,0,W,H);
 }
-// Draw a ring marker (white outline, colored ring, center dot) at pixel x,y. Used for start positions.
+// Draw a Square marker (white outline, colored ring, center dot) at pixel x,y. Used for start positions.
 function marker(g,x,y,col){
-  g.lineWidth=5;g.strokeStyle='#fff';g.beginPath();g.arc(x,y,16,0,7);g.stroke();
-  g.lineWidth=3;g.strokeStyle=col;g.beginPath();g.arc(x,y,16,0,7);g.stroke();
-  g.fillStyle=col;g.beginPath();g.arc(x,y,5,0,7);g.fill();
+  g.lineWidth=5;g.strokeStyle='#fff';g.beginPath();g.rect(x,y,40,40,7);g.stroke();
+  g.lineWidth=3;g.strokeStyle=col;g.beginPath();g.rect(x,y,40,40,7);g.stroke();
+  g.fillStyle=col;g.beginPath();g.rect(x,y,40,40,7);g.fill();
 }
 // Redraw the Scout canvas: field, recorded points (gold = auto, blue = teleop), the start marker, and the point counts.
 function drawTrace(){
