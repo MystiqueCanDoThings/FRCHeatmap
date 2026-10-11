@@ -12,7 +12,7 @@
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif}
 main{max-width:900px;margin:0 auto;padding:12px}
-h1{font-size:18px;margin:4px 0 10px;color:#fff}
+h1{font-size:18px;margin:4px 0 10px}
 .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
 button,select,input,textarea{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 button{cursor:pointer}
@@ -26,6 +26,9 @@ textarea{width:100%;height:80px;font-size:12px}
 .hide{display:none}
 table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
 .x{padding:2px 8px}
+/* Fallback fade for browsers without View Transitions; the circular reveal below replaces it where supported. */
+body,.card,button,select,input,textarea,canvas{transition:background-color .4s,color .4s,border-color .4s}
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
 </style>
 </head>
 <body>
@@ -34,7 +37,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;b
 
 <!-- GLOBAL EVENT BAR: key + event search live here so every tab works on one event. -->
 <section class="card" id="evBar">
-  <div class="row"><label>TBA key <input id="tbaKey" type="password" placeholder="paste key" style="width:200px"></label><button id="keySave">Save key</button><span class="mut">Free read key: thebluealliance.com/account. Stored on this device only.</span></div>
+  <div class="row"><label>TBA key <input id="tbaKey" type="password" placeholder="paste key" style="width:200px"></label><button id="keySave">Save key</button><span class="mut" id="kNote">Free read key: thebluealliance.com/account. Stored on this device only.</span></div>
   <div class="row"><input id="evQ" placeholder="Event name, code, city or state/region (e.g. casd, San Diego, California)" style="flex:1;min-width:220px"><button id="evGo">Find event</button><button id="evClear">Clear event</button></div>
   <p id="evInfo" class="mut" style="margin:0">No event selected. Scout data and event data are shown for all events.</p>
   <div id="evPick"></div>
@@ -48,6 +51,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;b
   <button id="tRank">Event rankings</button>
   <button id="tPred">Match Predictor</button>
   <button id="tData">Heatmap Import/Export</button>
+  <button id="tSet">Settings</button>
 </div>
 
 <section id="vScout">
@@ -62,8 +66,8 @@ table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;b
       <button id="pStart" class="on">Start</button><button id="pAuto">Auto</button><button id="pTele">Teleop</button>
     </div>
     <canvas id="scout" width="1000" height="525"></canvas>
-    <p class="mut">Start: tap where the robot begins (drag to adjust). Auto/Teleop: press and drag to follow the robot, hold still where it sits, lift if you lose it. Blue side is left, red side is right.</p>
-    <p class="mut">This was created by MystiqueCanDoThings.</p>
+    <p class="mut" id="hHow">Start: tap where the robot begins (drag to adjust). Auto/Teleop: press and drag to follow the robot, hold still where it sits, lift if you lose it. Blue side is left, red side is right.</p>
+    <p class="mut" id="hBy">This was created by MystiqueCanDoThings.</p>
     <div class="row"><button id="clear">Clear phase</button><button id="save">Save match</button><span id="count" class="mut"></span></div>
   </div>
 </section>
@@ -90,7 +94,14 @@ table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;b
 
 <section id="vStat" class="hide"><div class="card"><p id="stInfo" class="mut"></p><div id="stTable" style="overflow-x:auto"></div></div></section>
 <section id="vRank" class="hide"><div class="card"><p id="rkInfo" class="mut"></p><div id="rkTable" style="overflow-x:auto"></div></div></section>
-<section id="vPred" class="hide"><div class="card"><p class="mut">Match Predictor is coming soon.</p></div></section>
+<section id="vPred" class="hide"><div class="card"><p class="mut" id="hSoon">Match Predictor is coming soon.</p></div></section>
+
+<section id="vSet" class="hide"><div class="card">
+  <div class="row"><b id="lAppear">Appearance</b></div>
+  <div class="row"><button id="thSystem">System</button><button id="thLight">Light</button><button id="thDark">Dark</button></div>
+  
+<div class="row"><b id="lLang">Language</b><select id="langSel"></select></div>
+</div></section>
 
 <section id="vData" class="hide">
   <div class="card"><div class="row"><b id="listTitle">Saved matches</b></div><div id="list"></div></div>
@@ -112,7 +123,7 @@ let matches=[],alliance='red',phase='start',tab='Scout';
 let cur={auto:[],tele:[],start:null},down=false,pos=null,timer=null,t0={};
 try{matches=JSON.parse(localStorage.getItem(KEY)||'[]')}catch(e){matches=[]}
 // Returns false (and warns) when the browser refuses the write, so scouts never lose data silently.
-function persist(){try{localStorage.setItem(KEY,JSON.stringify(matches));return true}catch(e){alert('Could not save to this device (storage full or blocked). Export your data now.');return false}}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(matches));return true}catch(e){alert(t('storeFail'));return false}}
 
 const FIELDS=[['images/field26.png','2026'],['images/field25.png','2025'],['images/field24.png','2024'],['images/field23.png','2023'],['images/field22.png','2022']];
 const LEFT='blue';
@@ -143,7 +154,7 @@ function drawTrace(){
   const c=$('scout');drawField(c);const g=c.getContext('2d');
   [['auto','#e8a300'],['tele','#2f6fed']].forEach(([p,col])=>{g.fillStyle=col;cur[p].forEach(q=>{g.beginPath();g.arc(q.sx*W,q.sy*H,5,0,7);g.fill()})});
   if(cur.start)marker(g,cur.start.sx*W,cur.start.sy*H,'#00b36b');
-  $('count').textContent=(cur.start?'Start set · ':'No start · ')+'Auto '+cur.auto.length+' pts · Teleop '+cur.tele.length+' pts';
+  $('count').textContent=(cur.start?t('startSet'):t('noStart'))+' · '+t('auto')+' '+cur.auto.length+' '+t('pts')+' · '+t('tele')+' '+cur.tele.length+' '+t('pts');
 }
 function evPos(e){const r=$('scout').getBoundingClientRect();return{x:Math.min(1,Math.max(0,(e.clientX-r.left)/r.width)),y:Math.min(1,Math.max(0,(e.clientY-r.top)/r.height))}}
 function sample(){if(!down||!pos)return;if(t0[phase]==null)t0[phase]=Date.now();cur[phase].push({sx:pos.x,sy:pos.y,t:Date.now()-t0[phase]});drawTrace()}
@@ -164,20 +175,20 @@ const mkey=m=>[m.team,m.match,fk(m),m.event||''].join('|');
 // Save: rotate the other alliance 180 degrees, round coordinates to 4 decimals (keeps storage small), tag with event, replace duplicates after confirming.
 $('save').onclick=()=>{
   const team=$('team').value,match=$('match').value;
-  if(!team||!match){alert('Enter team and match number');return}
-  if(!cur.start&&!cur.auto.length&&!cur.tele.length){alert('Nothing recorded yet');return}
+  if(!team||!match){alert(t('enterNums'));return}
+  if(!cur.start&&!cur.auto.length&&!cur.tele.length){alert(t('nothingRec'));return}
   const flip=p=>alliance!==LEFT?{x:r4(1-p.sx),y:r4(1-p.sy),t:p.t}:{x:r4(p.sx),y:r4(p.sy),t:p.t};
   const m={team:+team,match:+match,alliance,field:fieldSrc,event:ev?ev.key:null,start:cur.start?flip(cur.start):null,auto:cur.auto.map(flip),tele:cur.tele.map(flip)};
   const i=matches.findIndex(o=>mkey(o)===mkey(m));
-  if(i>=0){if(!confirm('Team '+team+' match '+match+' is already saved. Replace it?'))return;matches[i]=m}else matches.push(m);
+  if(i>=0){if(!confirm(t('replaceQ')))return;matches[i]=m}else matches.push(m);
   if(!persist())return;
   cur={auto:[],tele:[],start:null};t0={};drawTrace();$('match').value=+match+1;$('team').value='';
 };
 
 // ===== Tabs =====
-const TABS=['Scout','Map','Stat','Rank','Pred','Data'];
+const TABS=['Scout','Map','Stat','Rank','Pred','Data','Set'];
 function show(v){
-  tab=v;rp.playing=false;$('rPlay').textContent='Play';
+  tab=v;rp.playing=false;$('rPlay').textContent=t('play');
   TABS.forEach(n=>{$('v'+n).classList.toggle('hide',n!==v);$('t'+n).classList.toggle('on',n===v)});
   if(v==='Map'){fillTeams();renderHeat()}
   if(v==='Data')renderList();
@@ -190,7 +201,7 @@ TABS.forEach(n=>$('t'+n).onclick=()=>show(n));
 function fillTeams(){
   const sel=$('fTeam'),old=sel.value;
   const teams=[...new Set(sm().map(m=>m.team))].sort((a,b)=>a-b);
-  sel.innerHTML=teams.map(t=>'<option>'+t+'</option>').join('')||'<option value="">No data</option>';
+  sel.innerHTML=teams.map(t=>'<option>'+t+'</option>').join('')||'<option value="">'+t('noData')+'</option>';
   if(teams.map(String).includes(old))sel.value=old;
   fillRM();
 }
@@ -210,7 +221,7 @@ function renderHeat(){
   if($('rMatch').value!==''){drawReplay();return}
   const c=$('heat'),g=c.getContext('2d');drawField(c);
   const ms=sm().filter(m=>m.team===+$('fTeam').value),pts=ptsOf(ms,$('fPhase').value);
-  $('heatInfo').textContent=ms.length?(ms.length+' match(es), '+pts.length+' samples. Left side = own alliance side (blue\'s view).'):'Save a match to see a heatmap.';
+  $('heatInfo').textContent=ms.length?(ms.length+' '+t('matchesN')+' · '+pts.length+' '+t('samples')):t('heatEmpty');
   if(pts.length)g.drawImage(heatLayer(pts),0,0);
   drawStarts(g,ms);
 }
@@ -219,12 +230,12 @@ const rp={pts:[],dur:0,t:0,playing:false,last:0,cache:null,live:null,liveN:-1};
 // Rebuilds the replay list but keeps the selected match when it still exists.
 function fillRM(){
   const old=$('rMatch').value,ms=sm().filter(m=>m.team===+$('fTeam').value);
-  $('rMatch').innerHTML='<option value="">Off</option>'+ms.map((m,i)=>'<option value="'+i+'">Match '+m.match+'</option>').join('');
+  $('rMatch').innerHTML='<option value="">'+t('off')+'</option>'+ms.map((m,i)=>'<option value="'+i+'">'+t('matchNo')+' '+m.match+'</option>').join('');
   if(old!==''&&ms[+old])$('rMatch').value=old;
-  rp.playing=false;$('rPlay').textContent='Play';
+  rp.playing=false;$('rPlay').textContent=t('play');
 }
 function loadReplay(){
-  rp.playing=false;$('rPlay').textContent='Play';rp.t=0;rp.cache=null;rp.liveN=-1;
+  rp.playing=false;$('rPlay').textContent=t('play');rp.t=0;rp.cache=null;rp.liveN=-1;
   const ms=sm().filter(m=>m.team===+$('fTeam').value),m=ms[+$('rMatch').value];
   if(!m){rp.pts=[];rp.dur=0;$('rBar').max=0;$('rBar').value=0;renderHeat();return}
   const A=m.auto.map((p,i)=>({x:p.x,y:p.y,t:p.t??i*120,a:1}));
@@ -249,12 +260,12 @@ function drawReplay(){
   if($('showStart').checked&&m.start)marker(g,m.start.x*W,m.start.y*H,'#00b36b');
   if(prev){g.fillStyle='#fff';g.strokeStyle='#000';g.lineWidth=3;g.beginPath();g.arc(prev.x*W,prev.y*H,9,0,7);g.fill();g.stroke()}
   $('rTime').textContent=(rp.t/1000).toFixed(1)+' / '+(rp.dur/1000).toFixed(1)+' s';
-  $('heatInfo').textContent='Replaying match '+m.match+': pink = auto, white = teleop. Heat sits over the path.';
+  $('heatInfo').textContent=t('replay')+' · '+t('matchNo')+' '+m.match;
 }
 function tick(ts){
   if(!rp.playing)return;
   rp.t+=(ts-rp.last)*(+$('rSpd').value);rp.last=ts;
-  if(rp.t>=rp.dur){rp.t=rp.dur;rp.playing=false;$('rPlay').textContent='Play'}
+  if(rp.t>=rp.dur){rp.t=rp.dur;rp.playing=false;$('rPlay').textContent=t('play')}
   $('rBar').value=rp.t;drawReplay();
   if(rp.playing)requestAnimationFrame(tick);
 }
@@ -263,9 +274,9 @@ $('rHeat').onchange=()=>{rp.cache=null;rp.liveN=-1;if($('rMatch').value!=='')dra
 $('rBar').oninput=()=>{rp.t=+$('rBar').value;drawReplay()};
 $('rPlay').onclick=()=>{
   if($('rMatch').value===''||!rp.dur)return;
-  if(rp.playing){rp.playing=false;$('rPlay').textContent='Play';return}
+  if(rp.playing){rp.playing=false;$('rPlay').textContent=t('play');return}
   if(rp.t>=rp.dur)rp.t=0;
-  rp.playing=true;rp.last=performance.now();$('rPlay').textContent='Pause';requestAnimationFrame(tick);
+  rp.playing=true;rp.last=performance.now();$('rPlay').textContent=t('pause');requestAnimationFrame(tick);
 };
 $('fTeam').onchange=()=>{$('rMatch').value='';fillRM();renderHeat()};
 $('fPhase').onchange=$('rad').oninput=$('showStart').onchange=renderHeat;
@@ -273,8 +284,8 @@ $('fPhase').onchange=$('rad').oninput=$('showStart').onchange=renderHeat;
 // ===== Import / export =====
 // All user-controlled text is escaped before it touches innerHTML.
 function renderList(){
-  $('listTitle').textContent='Saved matches · '+seasonYear()+(ev?' · '+ev.key:'');
-  $('list').innerHTML=matches.some(inSeason)?matches.map((m,i)=>!inSeason(m)?'':'<div class="row"><span>Team '+esc(m.team)+' · Match '+esc(m.match)+' · '+esc(m.alliance)+(m.start?' · start':'')+' · '+(m.auto.length+m.tele.length)+' pts</span><button class="x" data-i="'+i+'">Delete</button></div>').join(''):'<span class="mut">Nothing saved yet.</span>';
+  $('listTitle').textContent=t('saved')+' · '+seasonYear()+(ev?' · '+ev.key:'');
+  $('list').innerHTML=matches.some(inSeason)?matches.map((m,i)=>!inSeason(m)?'':'<div class="row"><span>'+t('team')+' '+esc(m.team)+' · '+t('matchNo')+' '+esc(m.match)+' · '+t(m.alliance==='blue'?'blue':'red')+(m.start?' · '+t('start'):'')+' · '+(m.auto.length+m.tele.length)+' '+t('pts')+'</span><button class="x" data-i="'+i+'">'+t('del')+'</button></div>').join(''):'<span class="mut">'+t('nothing')+'</span>';
   document.querySelectorAll('.x').forEach(b=>b.onclick=()=>{matches.splice(+b.dataset.i,1);persist();renderList()});
 }
 $('exp').onclick=()=>{$('io').value=JSON.stringify(matches);$('io').select()};
@@ -282,31 +293,31 @@ const okPt=p=>p&&isFinite(p.x)&&isFinite(p.y);
 const valid=m=>m&&isFinite(m.team)&&isFinite(m.match)&&Array.isArray(m.auto)&&Array.isArray(m.tele)&&m.auto.every(okPt)&&m.tele.every(okPt)&&(!m.start||okPt(m.start));
 // Import: reject malformed entries, only allow known field images, skip duplicates already saved.
 $('imp').onclick=()=>{
-  let a;try{a=JSON.parse($('io').value)}catch(e){alert('Invalid JSON');return}
-  if(!Array.isArray(a)){alert('Expected a list of matches');return}
+  let a;try{a=JSON.parse($('io').value)}catch(e){alert(t('badJson'));return}
+  if(!Array.isArray(a)){alert(t('notList'));return}
   const seen=new Set(matches.map(mkey));let added=0,bad=0;
   a.forEach(m=>{
     if(!valid(m)){bad++;return}
     const n={team:+m.team,match:+m.match,alliance:m.alliance==='blue'?'blue':'red',field:FIELDS.some(f=>f[0]===m.field)?m.field:FIELDS[0][0],event:typeof m.event==='string'?m.event:null,start:m.start||null,auto:m.auto,tele:m.tele};
     if(seen.has(mkey(n)))return;seen.add(mkey(n));matches.push(n);added++;
   });
-  if(persist()){renderList();$('io').value='';alert('Imported '+added+' match(es)'+(bad?', skipped '+bad+' invalid':'')+'.')}
+  if(persist()){renderList();$('io').value='';alert(t('imported')+': '+added+(bad?' · ✗ '+bad:''))}
 };
 
 // ===== The Blue Alliance: global event bar =====
 const TBA='https://www.thebluealliance.com/api/v3',evCache={};
 try{$('tbaKey').value=localStorage.getItem('frcTbaKey')||''}catch(e){}
-$('keySave').onclick=()=>{try{localStorage.setItem('frcTbaKey',$('tbaKey').value.trim())}catch(e){}$('evInfo').textContent='Key saved on this device.'};
+$('keySave').onclick=()=>{try{localStorage.setItem('frcTbaKey',$('tbaKey').value.trim())}catch(e){}$('evInfo').textContent=t('keySaved')};
 async function tba(path){
   const k=$('tbaKey').value.trim();
-  if(!k)throw new Error('Paste your TBA API key above first.');
-  const r=await fetch(TBA+path,{headers:{'X-TBA-Auth-Key':k}});
-  if(r.status===401)throw new Error('TBA rejected the key.');
-  if(r.status===404)throw new Error('Event not found.');
+  if(!k)throw new Error(t('needKey'));
+  let r;try{r=await fetch(TBA+path,{headers:{'X-TBA-Auth-Key':k}})}catch(e){throw new Error(t('noNet'))}
+  if(r.status===401)throw new Error(t('rejected'));
+  if(r.status===404)throw new Error(t('notFound'));
   if(!r.ok)throw new Error('TBA error '+r.status);
   return r.json();
 }
-function evLabel(){$('evInfo').textContent=ev?'Event: '+ev.name+' ('+ev.key+'). All tabs show this event only.':'No event selected. Scout data and event data are shown for all events.'}
+function evLabel(){$('evInfo').textContent=ev?t('event')+': '+ev.name+' ('+ev.key+'). '+t('eventOn'):t('noEvent')}
 // Selecting an event also switches the field to that event's season (when we have its image) and refreshes the current tab.
 function setEvent(e){
   ev=e;try{localStorage.setItem('frcEv',JSON.stringify(e))}catch(x){}
@@ -326,22 +337,22 @@ async function evSearch(){
     const code=list.find(e=>e.key===y+q);
     if(code){setEvent({key:code.key,name:code.name,year:code.year});return}
     const hits=list.filter(e=>[e.name,e.city,e.state_prov,e.country].some(s=>(s||'').toLowerCase().includes(q))).sort((a,b)=>(a.start_date||'').localeCompare(b.start_date||'')).slice(0,12);
-    if(!hits.length){$('evInfo').textContent='No '+y+' events match "'+q+'".';return}
+    if(!hits.length){$('evInfo').textContent=t('noMatch')+' "'+q+'" ('+y+')';return}
     if(hits.length===1){setEvent({key:hits[0].key,name:hits[0].name,year:hits[0].year});return}
-    $('evInfo').textContent='Closest matches, pick one:';
+    $('evInfo').textContent=t('pickOne');
     $('evPick').innerHTML=hits.map((e,i)=>'<div class="row"><button data-i="'+i+'">'+esc(e.name)+' · '+esc([e.city,e.state_prov].filter(Boolean).join(', '))+' · '+esc(e.start_date||'')+'</button></div>').join('');
     $('evPick').querySelectorAll('button').forEach(b=>b.onclick=()=>{const e=hits[+b.dataset.i];setEvent({key:e.key,name:e.name,year:e.year})});
   }catch(e){$('evInfo').textContent=e.message}
 }
 $('evGo').onclick=evSearch;$('evQ').onkeydown=e=>{if(e.key==='Enter')evSearch()};
 async function loadRank(){
-  if(!ev){$('rkInfo').textContent='Pick an event above to see its rankings.';$('rkTable').innerHTML='';return}
+  if(!ev){$('rkInfo').textContent=t('pickEvent');$('rkTable').innerHTML='';return}
   try{
     const d=await tba('/event/'+ev.key+'/rankings'),rk=d&&d.rankings;
-    if(!rk||!rk.length){$('rkInfo').textContent='No rankings posted yet for '+ev.key+'.';$('rkTable').innerHTML='';return}
+    if(!rk||!rk.length){$('rkInfo').textContent=t('noRank');$('rkTable').innerHTML='';return}
     const info=(d.sort_order_info||[]).map(x=>x.name);
-    $('rkInfo').textContent='Rankings for '+ev.name+' ('+rk.length+' teams)';
-    let h='<table><tr><th>Rank</th><th>Team</th><th>W-L-T</th><th>Played</th>'+info.map(n=>'<th>'+esc(n)+'</th>').join('')+'</tr>';
+    $('rkInfo').textContent=t('rankFor')+' '+ev.name+' ('+rk.length+')';
+    let h='<table><tr><th>'+t('rankH')+'</th><th>'+t('team')+'</th><th>W-L-T</th><th>'+t('played')+'</th>'+info.map(n=>'<th>'+esc(n)+'</th>').join('')+'</tr>';
     rk.forEach(r=>{const c=r.record||{};h+='<tr><td>'+r.rank+'</td><td>'+esc(r.team_key.slice(3))+'</td><td>'+(c.wins??'')+'-'+(c.losses??'')+'-'+(c.ties??'')+'</td><td>'+(r.matches_played??'')+'</td>'+(r.sort_orders||[]).map(v=>'<td>'+(typeof v==='number'?+v.toFixed(2):esc(v))+'</td>').join('')+'</tr>'});
     $('rkTable').innerHTML=h+'</table>';
   }catch(e){$('rkInfo').textContent=e.message}
@@ -351,19 +362,63 @@ async function loadRank(){
 // Public API, no key. Reads Statbotics v3 team_events for the selected event and ranks teams by total EPA.
 const get=(o,p)=>p.split('.').reduce((a,k)=>a==null?a:a[k],o);
 const num=v=>typeof v==='number'?v.toFixed(1):'–';
+const SB='https://api.statbotics.io/v3/';
+async function sbj(p){const r=await fetch(SB+p);if(!r.ok)throw new Error('Statbotics '+r.status+' on /'+p.split('?')[0]);return r.json()}
+const sbRow=e=>({team:e.team,epa:get(e,'epa.total_points.mean')??get(e,'epa.unitless'),auto:get(e,'epa.breakdown.auto_points'),tele:get(e,'epa.breakdown.teleop_points'),end:get(e,'epa.breakdown.endgame_points')});
+// Tries the bulk event call first. If Statbotics errors (it returned 500 for some events), falls back to TBA's team list plus one Statbotics call per team.
 async function loadStat(){
-  if(!ev){$('stInfo').textContent='Pick an event above to see Statbotics EPA for its teams.';$('stTable').innerHTML='';return}
-  $('stInfo').textContent='Loading EPA for '+ev.key+'…';
-  try{
-    const r=await fetch('https://api.statbotics.io/v3/team_events?event='+encodeURIComponent(ev.key)+'&limit=200');
-    if(!r.ok)throw new Error('Statbotics error '+r.status);
-    const rows=(await r.json()).map(e=>({team:e.team,epa:get(e,'epa.total_points.mean')??get(e,'epa.unitless'),auto:get(e,'epa.breakdown.auto_points'),tele:get(e,'epa.breakdown.teleop_points'),end:get(e,'epa.breakdown.endgame_points')}));
-    if(!rows.length){$('stInfo').textContent='Statbotics has no EPA for '+ev.key+' yet.';$('stTable').innerHTML='';return}
-    rows.sort((a,b)=>(b.epa??-1)-(a.epa??-1));
-    $('stInfo').textContent='EPA for '+ev.name+' · '+rows.length+' teams · source: Statbotics';
-    $('stTable').innerHTML='<table><tr><th>#</th><th>Team</th><th>EPA</th><th>Auto</th><th>Teleop</th><th>Endgame</th></tr>'+rows.map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(x.team)+'</td><td>'+num(x.epa)+'</td><td>'+num(x.auto)+'</td><td>'+num(x.tele)+'</td><td>'+num(x.end)+'</td></tr>').join('')+'</table>';
-  }catch(e){$('stInfo').textContent=e.message}
+  if(!ev){$('stInfo').textContent=t('pickEvent');$('stTable').innerHTML='';return}
+  $('stInfo').textContent=t('loading');
+  let rows=null,why='';
+  try{const d=await sbj('team_events?event='+encodeURIComponent(ev.key));if(Array.isArray(d))rows=d.map(sbRow)}catch(e){why=e.message}
+  if(!rows||!rows.length){
+    try{
+      const keys=await tba('/event/'+ev.key+'/teams/keys');
+      rows=(await Promise.all(keys.map(k=>sbj('team_event/'+k.slice(3)+'/'+ev.key).then(sbRow).catch(()=>null)))).filter(Boolean);
+    }catch(e){why+=(why?' · ':'')+e.message}
+  }
+  if(!rows||!rows.length){$('stInfo').textContent=t('noEpa')+(why?' ('+why+')':'');$('stTable').innerHTML='';return}
+  rows.sort((a,b)=>(b.epa??-1)-(a.epa??-1));
+  $('stInfo').textContent=t('epaFor')+' '+ev.name+' · '+rows.length+' · Statbotics';
+  $('stTable').innerHTML='<table><tr><th>#</th><th>'+t('team')+'</th><th>EPA</th><th>'+t('auto')+'</th><th>'+t('tele')+'</th><th>'+t('endgame')+'</th></tr>'+rows.map((x,n)=>'<tr><td>'+(n+1)+'</td><td>'+esc(x.team)+'</td><td>'+num(x.epa)+'</td><td>'+num(x.auto)+'</td><td>'+num(x.tele)+'</td><td>'+num(x.end)+'</td></tr>').join('')+'</table>';
 }
+
+
+// ===== Theme (System / Light / Dark) =====
+const root=document.documentElement;
+function applyTheme(m){if(m==='system')root.removeAttribute('data-theme');else root.dataset.theme=m;pick(['thSystem','thLight','thDark'],'th'+m[0].toUpperCase()+m.slice(1))}
+// Uses the View Transitions API for a circular reveal from the clicked button; falls back to the CSS fade.
+function setTheme(m,x,y){
+  try{localStorage.setItem('frcTheme',m)}catch(e){}
+  if(!document.startViewTransition||matchMedia('(prefers-reduced-motion:reduce)').matches){applyTheme(m);return}
+  const t=document.startViewTransition(()=>applyTheme(m));
+  t.ready.then(()=>root.animate({clipPath:['circle(0px at '+x+'px '+y+'px)','circle('+Math.hypot(innerWidth,innerHeight)+'px at '+x+'px '+y+'px)']},{duration:650,easing:'ease-in-out',pseudoElement:'::view-transition-new(root)'})).catch(()=>{});
+}
+[['thSystem','system'],['thLight','light'],['thDark','dark']].forEach(([id,m])=>$(id).onclick=e=>setTheme(m,e.clientX,e.clientY));
+let savedTheme='system';try{savedTheme=localStorage.getItem('frcTheme')||'system'}catch(e){}
+applyTheme(savedTheme);
+
+// ===== Language =====
+const K=["scout", "map", "stat", "rank", "pred", "data", "set", "field", "tbaKey", "saveKey", "evPh", "find", "clear", "event", "eventOn", "noEvent", "teamNum", "matchNo", "team", "replay", "red", "blue", "start", "auto", "tele", "clearPhase", "saveMatch", "play", "pause", "appearance", "system", "light", "dark", "language", "keyNote", "howTo", "createdBy", "phase", "all", "radius", "starts", "speed", "heat", "live", "teamTotal", "none", "off", "soon", "saved", "exportJ", "importJ", "ioPh", "del", "nothing", "noData", "pickEvent", "loading", "rankH", "played", "endgame", "startSet", "noStart", "pts", "enterNums", "nothingRec", "replaceQ", "storeFail", "badJson", "notList", "imported", "needKey", "keySaved", "rejected", "notFound", "noNet", "noMatch", "pickOne", "noRank", "rankFor", "epaFor", "noEpa", "heatEmpty", "samples", "matchesN"];
+const D={"en": "Scout|Heatmap|Statbotics (EPA)|Event rankings|Match Predictor|Heatmap Import/Export|Settings|Field|TBA key|Save key|Event name, code, city or state/region (e.g. casd, San Diego, California)|Find event|Clear event|Event|All tabs show this event only.|No event selected. Scout data and event data are shown for all events.|Team (Number)|Match|Team|Replay|Red|Blue|Start|Auto|Teleop|Clear phase|Save match|Play|Pause|Appearance|System|Light|Dark|Language|Free read key: thebluealliance.com/account. Stored on this device only.|Start: tap where the robot begins (drag to adjust). Auto/Teleop: press and drag to follow the robot, hold still where it sits, lift if you lose it. Blue side is left, red side is right.|Created by MystiqueCanDoThings.|Phase|All|Radius|Starts|Speed|Heat|Builds as it plays|Team total|None|Off|Match Predictor is coming soon.|Saved matches|Export JSON|Import JSON|Export fills this box. Paste JSON here and press Import to merge.|Delete|Nothing saved yet.|No data|Pick an event above first.|Loading…|Rank|Played|Endgame|Start set|No start|pts|Enter team and match number|Nothing recorded yet|This match is already saved. Replace it?|Could not save to this device (storage full or blocked). Export your data now.|Invalid JSON|Expected a list of matches|Imported|Paste your TBA API key above first.|Key saved on this device.|TBA rejected the key.|Event not found.|Could not reach The Blue Alliance. Check the key and your connection.|No events match|Closest matches, pick one:|No rankings posted yet.|Rankings for|EPA for|Statbotics has no EPA for this event yet.|Save a match to see a heatmap.|samples|match(es)", "es": "Explorar|Mapa de calor|Statbotics (EPA)|Clasificación del evento|Predictor de partidos|Importar/Exportar mapa de calor|Ajustes|Campo|Clave TBA|Guardar clave|Nombre, código, ciudad o estado/región del evento (p. ej. casd, San Diego, California)|Buscar evento|Borrar evento|Evento|Todas las pestañas muestran solo este evento.|Ningún evento seleccionado. Se muestran los datos de todos los eventos.|Equipo (número)|Partido|Equipo|Repetición|Rojo|Azul|Inicio|Auto|Teleop|Borrar fase|Guardar partido|Reproducir|Pausa|Apariencia|Sistema|Claro|Oscuro|Idioma|Clave de lectura gratuita: thebluealliance.com/account. Se guarda solo en este dispositivo.|Inicio: toca donde empieza el robot (arrastra para ajustar). Auto/Teleop: mantén pulsado y arrastra para seguir al robot, quédate quieto donde esté, levanta el dedo si lo pierdes. El lado azul está a la izquierda y el rojo a la derecha.|Creado por MystiqueCanDoThings.|Fase|Todo|Radio|Inicios|Velocidad|Calor|Se construye al reproducir|Total del equipo|Ninguno|Apagado|El predictor de partidos llegará pronto.|Partidos guardados|Exportar JSON|Importar JSON|Al exportar se rellena este cuadro. Pega JSON aquí y pulsa Importar para combinar.|Eliminar|Aún no hay nada guardado.|Sin datos|Primero elige un evento arriba.|Cargando…|Pos.|Jugados|Final|Inicio fijado|Sin inicio|pts|Introduce el equipo y el número de partido|Aún no se ha registrado nada|Este partido ya está guardado. ¿Reemplazarlo?|No se pudo guardar en este dispositivo (almacenamiento lleno o bloqueado). Exporta tus datos ahora.|JSON no válido|Se esperaba una lista de partidos|Importados|Pega primero tu clave de la API de TBA arriba.|Clave guardada en este dispositivo.|TBA rechazó la clave.|Evento no encontrado.|No se pudo conectar con The Blue Alliance. Revisa la clave y tu conexión.|Ningún evento coincide|Coincidencias más cercanas, elige una:|Aún no hay clasificación publicada.|Clasificación de|EPA de|Statbotics aún no tiene EPA para este evento.|Guarda un partido para ver un mapa de calor.|muestras|partido(s)", "fr": "Scouting|Carte thermique|Statbotics (EPA)|Classement de l'événement|Prédicteur de matchs|Import/Export carte thermique|Réglages|Terrain|Clé TBA|Enregistrer la clé|Nom, code, ville ou état/région de l'événement (ex. casd, San Diego, Californie)|Trouver l'événement|Effacer l'événement|Événement|Tous les onglets affichent uniquement cet événement.|Aucun événement sélectionné. Les données de tous les événements sont affichées.|Équipe (numéro)|Match|Équipe|Replay|Rouge|Bleu|Départ|Auto|Téléop|Effacer la phase|Enregistrer le match|Lecture|Pause|Apparence|Système|Clair|Sombre|Langue|Clé de lecture gratuite : thebluealliance.com/account. Stockée uniquement sur cet appareil.|Départ : touchez l'endroit où le robot commence (glissez pour ajuster). Auto/Téléop : appuyez et glissez pour suivre le robot, restez immobile là où il s'arrête, levez le doigt si vous le perdez. Le côté bleu est à gauche, le rouge à droite.|Créé par MystiqueCanDoThings.|Phase|Tout|Rayon|Départs|Vitesse|Chaleur|Se construit pendant la lecture|Total de l'équipe|Aucun|Désactivé|Le prédicteur de matchs arrive bientôt.|Matchs enregistrés|Exporter en JSON|Importer du JSON|L'export remplit cette zone. Collez du JSON ici et appuyez sur Importer pour fusionner.|Supprimer|Rien d'enregistré pour l'instant.|Aucune donnée|Choisissez d'abord un événement ci-dessus.|Chargement…|Rang|Joués|Fin de match|Départ défini|Pas de départ|pts|Saisissez l'équipe et le numéro de match|Rien d'enregistré pour l'instant|Ce match est déjà enregistré. Le remplacer ?|Impossible d'enregistrer sur cet appareil (stockage plein ou bloqué). Exportez vos données maintenant.|JSON invalide|Une liste de matchs était attendue|Importés|Collez d'abord votre clé API TBA ci-dessus.|Clé enregistrée sur cet appareil.|TBA a refusé la clé.|Événement introuvable.|Impossible de joindre The Blue Alliance. Vérifiez la clé et votre connexion.|Aucun événement ne correspond|Résultats les plus proches, choisissez-en un :|Aucun classement publié pour l'instant.|Classement de|EPA de|Statbotics n'a pas encore d'EPA pour cet événement.|Enregistrez un match pour voir une carte thermique.|échantillons|match(s)", "de": "Scouting|Heatmap|Statbotics (EPA)|Event-Rangliste|Spielvorhersage|Heatmap Import/Export|Einstellungen|Spielfeld|TBA-Schlüssel|Schlüssel speichern|Eventname, Code, Stadt oder Bundesstaat/Region (z. B. casd, San Diego, Kalifornien)|Event suchen|Event entfernen|Event|Alle Tabs zeigen nur dieses Event.|Kein Event ausgewählt. Daten aller Events werden angezeigt.|Team (Nummer)|Match|Team|Wiedergabe|Rot|Blau|Start|Auto|Teleop|Phase löschen|Match speichern|Abspielen|Pause|Darstellung|System|Hell|Dunkel|Sprache|Kostenloser Lese-Schlüssel: thebluealliance.com/account. Wird nur auf diesem Gerät gespeichert.|Start: Tippe auf die Startposition des Roboters (zum Anpassen ziehen). Auto/Teleop: Drücken und ziehen, um dem Roboter zu folgen, an Ort und Stelle halten, wo er steht, loslassen, wenn du ihn verlierst. Die blaue Seite ist links, die rote rechts.|Erstellt von MystiqueCanDoThings.|Phase|Alle|Radius|Starts|Tempo|Hitze|Baut sich beim Abspielen auf|Teamsumme|Keine|Aus|Die Spielvorhersage kommt bald.|Gespeicherte Matches|JSON exportieren|JSON importieren|Der Export füllt dieses Feld. JSON hier einfügen und auf Importieren drücken, um es zusammenzuführen.|Löschen|Noch nichts gespeichert.|Keine Daten|Wähle oben zuerst ein Event.|Lädt…|Rang|Gespielt|Endspiel|Start gesetzt|Kein Start|Pkt.|Team- und Matchnummer eingeben|Noch nichts aufgezeichnet|Dieses Match ist bereits gespeichert. Ersetzen?|Speichern auf diesem Gerät nicht möglich (Speicher voll oder blockiert). Exportiere jetzt deine Daten.|Ungültiges JSON|Eine Liste von Matches wurde erwartet|Importiert|Füge oben zuerst deinen TBA-API-Schlüssel ein.|Schlüssel auf diesem Gerät gespeichert.|TBA hat den Schlüssel abgelehnt.|Event nicht gefunden.|The Blue Alliance nicht erreichbar. Prüfe den Schlüssel und deine Verbindung.|Keine passenden Events|Beste Treffer, wähle einen:|Noch keine Rangliste veröffentlicht.|Rangliste für|EPA für|Statbotics hat für dieses Event noch keine EPA.|Speichere ein Match, um eine Heatmap zu sehen.|Messpunkte|Match(es)", "it": "Scouting|Mappa di calore|Statbotics (EPA)|Classifica evento|Previsione partite|Importa/Esporta mappa di calore|Impostazioni|Campo|Chiave TBA|Salva chiave|Nome, codice, città o stato/regione dell'evento (es. casd, San Diego, California)|Trova evento|Rimuovi evento|Evento|Tutte le schede mostrano solo questo evento.|Nessun evento selezionato. Vengono mostrati i dati di tutti gli eventi.|Squadra (numero)|Partita|Squadra|Replay|Rosso|Blu|Inizio|Auto|Teleop|Cancella fase|Salva partita|Riproduci|Pausa|Aspetto|Sistema|Chiaro|Scuro|Lingua|Chiave di lettura gratuita: thebluealliance.com/account. Salvata solo su questo dispositivo.|Inizio: tocca dove parte il robot (trascina per regolare). Auto/Teleop: premi e trascina per seguire il robot, resta fermo dove si ferma, solleva il dito se lo perdi. Il lato blu è a sinistra, quello rosso a destra.|Creato da MystiqueCanDoThings.|Fase|Tutto|Raggio|Inizi|Velocità|Calore|Si costruisce durante la riproduzione|Totale squadra|Nessuno|Off|Il previsore di partite arriva presto.|Partite salvate|Esporta JSON|Importa JSON|L'esportazione riempie questa casella. Incolla qui il JSON e premi Importa per unire.|Elimina|Ancora nulla di salvato.|Nessun dato|Scegli prima un evento qui sopra.|Caricamento…|Pos.|Giocate|Finale|Inizio impostato|Nessun inizio|pt|Inserisci squadra e numero partita|Ancora nulla registrato|Questa partita è già salvata. Sostituirla?|Impossibile salvare su questo dispositivo (memoria piena o bloccata). Esporta ora i tuoi dati.|JSON non valido|Era attesa una lista di partite|Importate|Incolla prima la tua chiave API di TBA qui sopra.|Chiave salvata su questo dispositivo.|TBA ha rifiutato la chiave.|Evento non trovato.|Impossibile raggiungere The Blue Alliance. Controlla la chiave e la connessione.|Nessun evento corrisponde|Risultati più vicini, scegline uno:|Nessuna classifica ancora pubblicata.|Classifica di|EPA di|Statbotics non ha ancora EPA per questo evento.|Salva una partita per vedere una mappa di calore.|campioni|partita/e", "ja": "スカウト|ヒートマップ|Statbotics (EPA)|イベント順位|試合予測|ヒートマップ入出力|設定|フィールド|TBAキー|キーを保存|イベント名、コード、都市、州・地域(例: casd、San Diego、California)|イベントを検索|イベントを解除|イベント|すべてのタブでこのイベントのみ表示します。|イベント未選択。すべてのイベントのデータを表示中。|チーム(番号)|試合|チーム|リプレイ|赤|青|開始|オート|テレオプ|フェーズを消去|試合を保存|再生|一時停止|外観|システム|ライト|ダーク|言語|無料の読み取りキー: thebluealliance.com/account。このデバイスにのみ保存されます。|開始: ロボットの開始位置をタップ(ドラッグで調整)。オート/テレオプ: 押したままドラッグしてロボットを追い、止まっている場所では動かさず、見失ったら指を離します。青側が左、赤側が右です。|MystiqueCanDoThings 作。|フェーズ|すべて|半径|開始位置|速度|ヒート|再生しながら描画|チーム合計|なし|オフ|試合予測は近日公開です。|保存した試合|JSONを書き出し|JSONを読み込み|書き出すとこの欄に入力されます。JSONを貼り付けて「読み込み」を押すと統合されます。|削除|まだ何も保存されていません。|データなし|まず上でイベントを選択してください。|読み込み中…|順位|試合数|エンドゲーム|開始位置設定済み|開始位置なし|点|チーム番号と試合番号を入力してください|まだ何も記録されていません|この試合は既に保存されています。置き換えますか?|このデバイスに保存できませんでした(容量不足またはブロック)。今すぐデータを書き出してください。|無効なJSONです|試合のリストが必要です|読み込み完了|まず上にTBA APIキーを貼り付けてください。|キーをこのデバイスに保存しました。|TBAがキーを拒否しました。|イベントが見つかりません。|The Blue Allianceに接続できません。キーと接続を確認してください。|一致するイベントがありません|近い候補から選んでください:|順位はまだ公開されていません。|順位:|EPA:|このイベントのEPAはStatboticsにまだありません。|試合を保存するとヒートマップが表示されます。|サンプル|試合", "ar": "الكشف|الخريطة الحرارية|Statbotics (EPA)|ترتيب الحدث|متنبئ المباريات|استيراد/تصدير الخريطة الحرارية|الإعدادات|الملعب|مفتاح TBA|حفظ المفتاح|اسم الحدث أو رمزه أو المدينة أو الولاية/المنطقة (مثال: casd، San Diego، California)|ابحث عن الحدث|مسح الحدث|الحدث|تعرض جميع علامات التبويب هذا الحدث فقط.|لم يتم اختيار حدث. تُعرض بيانات جميع الأحداث.|الفريق (الرقم)|المباراة|الفريق|إعادة العرض|أحمر|أزرق|البداية|ذاتي|التحكم اليدوي|مسح المرحلة|حفظ المباراة|تشغيل|إيقاف مؤقت|المظهر|النظام|فاتح|داكن|اللغة|مفتاح قراءة مجاني: thebluealliance.com/account. يُحفظ على هذا الجهاز فقط.|البداية: المس المكان الذي يبدأ منه الروبوت (اسحب للتعديل). ذاتي/التحكم اليدوي: اضغط واسحب لتتبع الروبوت، وابقَ ثابتًا حيث يتوقف، وارفع إصبعك إذا فقدته. الجانب الأزرق على اليسار والأحمر على اليمين.|من إنشاء MystiqueCanDoThings.|المرحلة|الكل|نصف القطر|نقاط البداية|السرعة|الحرارة|تُبنى أثناء التشغيل|مجموع الفريق|لا شيء|إيقاف|متنبئ المباريات قادم قريبًا.|المباريات المحفوظة|تصدير JSON|استيراد JSON|يملأ التصدير هذا المربع. الصق JSON هنا واضغط استيراد للدمج.|حذف|لا شيء محفوظ بعد.|لا توجد بيانات|اختر حدثًا أعلاه أولًا.|جارٍ التحميل…|المركز|لُعبت|نهاية المباراة|تم تحديد البداية|بدون بداية|نقطة|أدخل رقم الفريق ورقم المباراة|لم يتم تسجيل شيء بعد|هذه المباراة محفوظة بالفعل. هل تريد استبدالها؟|تعذّر الحفظ على هذا الجهاز (التخزين ممتلئ أو محظور). صدّر بياناتك الآن.|JSON غير صالح|المطلوب قائمة مباريات|تم الاستيراد|الصق مفتاح TBA API أعلاه أولًا.|تم حفظ المفتاح على هذا الجهاز.|رفض TBA المفتاح.|لم يتم العثور على الحدث.|تعذّر الوصول إلى The Blue Alliance. تحقق من المفتاح والاتصال.|لا توجد أحداث مطابقة|أقرب النتائج، اختر واحدًا:|لم يتم نشر ترتيب بعد.|ترتيب|EPA لـ|لا يوجد EPA لهذا الحدث في Statbotics بعد.|احفظ مباراة لرؤية الخريطة الحرارية.|عينات|مباراة/مباريات", "pt": "Scouting|Mapa de calor|Statbotics (EPA)|Classificação do evento|Previsor de partidas|Importar/Exportar mapa de calor|Configurações|Campo|Chave TBA|Salvar chave|Nome, código, cidade ou estado/região do evento (ex.: casd, San Diego, Califórnia)|Buscar evento|Limpar evento|Evento|Todas as abas mostram apenas este evento.|Nenhum evento selecionado. Dados de todos os eventos são exibidos.|Equipe (número)|Partida|Equipe|Replay|Vermelho|Azul|Início|Auto|Teleop|Limpar fase|Salvar partida|Reproduzir|Pausar|Aparência|Sistema|Claro|Escuro|Idioma|Chave de leitura gratuita: thebluealliance.com/account. Armazenada apenas neste dispositivo.|Início: toque onde o robô começa (arraste para ajustar). Auto/Teleop: pressione e arraste para seguir o robô, fique parado onde ele estiver, levante o dedo se o perder. O lado azul fica à esquerda e o vermelho à direita.|Criado por MystiqueCanDoThings.|Fase|Todas|Raio|Inícios|Velocidade|Calor|Constrói durante a reprodução|Total da equipe|Nenhum|Desligado|O previsor de partidas chega em breve.|Partidas salvas|Exportar JSON|Importar JSON|A exportação preenche esta caixa. Cole o JSON aqui e pressione Importar para mesclar.|Excluir|Nada salvo ainda.|Sem dados|Escolha um evento acima primeiro.|Carregando…|Pos.|Jogadas|Final|Início definido|Sem início|pts|Informe a equipe e o número da partida|Nada registrado ainda|Esta partida já está salva. Substituir?|Não foi possível salvar neste dispositivo (armazenamento cheio ou bloqueado). Exporte seus dados agora.|JSON inválido|Era esperada uma lista de partidas|Importadas|Cole primeiro sua chave da API do TBA acima.|Chave salva neste dispositivo.|O TBA recusou a chave.|Evento não encontrado.|Não foi possível acessar o The Blue Alliance. Verifique a chave e sua conexão.|Nenhum evento corresponde|Resultados mais próximos, escolha um:|Nenhuma classificação publicada ainda.|Classificação de|EPA de|O Statbotics ainda não tem EPA para este evento.|Salve uma partida para ver um mapa de calor.|amostras|partida(s)", "zh": "侦察|热力图|Statbotics(EPA)|赛事排名|比赛预测|热力图导入/导出|设置|场地|TBA 密钥|保存密钥|赛事名称、代码、城市或州/地区(例如 casd、San Diego、California)|查找赛事|清除赛事|赛事|所有标签页仅显示此赛事。|未选择赛事。显示所有赛事的数据。|队伍(编号)|比赛|队伍|回放|红|蓝|开始|自动|遥控|清除阶段|保存比赛|播放|暂停|外观|系统|浅色|深色|语言|免费只读密钥:thebluealliance.com/account。仅保存在此设备上。|开始:点击机器人的起始位置(可拖动调整)。自动/遥控:按住并拖动以跟随机器人,机器人停下时保持不动,跟丢时抬起手指。蓝方在左侧,红方在右侧。|由 MystiqueCanDoThings 创建。|阶段|全部|半径|起始点|速度|热度|随播放逐步生成|队伍总计|无|关闭|比赛预测即将推出。|已保存的比赛|导出 JSON|导入 JSON|导出内容会填入此框。将 JSON 粘贴到此处并点击导入以合并。|删除|尚未保存任何内容。|无数据|请先在上方选择赛事。|加载中…|排名|已赛|终局|已设置起点|未设置起点|分|请输入队伍和比赛编号|尚未记录任何内容|这场比赛已保存。要替换吗?|无法保存到此设备(存储已满或被阻止)。请立即导出数据。|JSON 无效|需要比赛列表|已导入|请先在上方粘贴 TBA API 密钥。|密钥已保存在此设备上。|TBA 拒绝了该密钥。|未找到赛事。|无法连接 The Blue Alliance。请检查密钥和网络连接。|没有匹配的赛事|最接近的结果,请选择一个:|尚未发布排名。|排名:|EPA:|Statbotics 暂时没有此赛事的 EPA。|保存一场比赛即可查看热力图。|采样点|场"};
+const NAMES=[['en','English'],['es','Español'],['fr','Français'],['de','Deutsch'],['it','Italiano'],['ja','日本語'],['ar','العربية'],['pt','Português'],['zh','中文 (简体)']];
+let lang='en';
+const t=k=>{const a=(D[lang]||D.en).split('|');return a[K.indexOf(k)]};
+// Replaces the first non-empty text node so labels keep their inputs.
+function setTxt(el,txt){const n=[...el.childNodes].find(c=>c.nodeType===3&&c.nodeValue.trim());if(n)n.nodeValue=txt+(el.children.length?' ':'');else el.textContent=txt}
+const BTN={tScout:'scout',tMap:'map',tStat:'stat',tRank:'rank',tPred:'pred',tData:'data',tSet:'set',exp:'exportJ',imp:'importJ',kNote:'keyNote',hHow:'howTo',hBy:'createdBy',hSoon:'soon',keySave:'saveKey',evGo:'find',evClear:'clear',aRed:'red',aBlue:'blue',pStart:'start',pAuto:'auto',pTele:'tele',clear:'clearPhase',save:'saveMatch',thSystem:'system',thLight:'light',thDark:'dark',lAppear:'appearance',lLang:'language'};
+const LBL={fieldSel:'field',tbaKey:'tbaKey',team:'teamNum',match:'matchNo',fTeam:'team',rMatch:'replay',fPhase:'phase',rad:'radius',showStart:'starts',rSpd:'speed',rHeat:'heat'};
+function setLang(l){
+  lang=D[l]?l:'en';try{localStorage.setItem('frcLang',lang)}catch(e){}
+  root.lang=lang;root.dir=lang==='ar'?'rtl':'ltr';$('langSel').value=lang;
+  Object.entries(BTN).forEach(([id,k])=>setTxt($(id),t(k)));
+  Object.entries(LBL).forEach(([id,k])=>setTxt($(id).parentNode,t(k)));
+  $('evQ').placeholder=t('evPh');$('io').placeholder=t('ioPh');[...$('fPhase').options].forEach(o=>o.text=t(o.value));[...$('rHeat').options].forEach(o=>o.text=t({live:'live',team:'teamTotal',none:'none'}[o.value]));$('rPlay').textContent=t(rp.playing?'pause':'play');evLabel();show(tab);
+}
+$('langSel').innerHTML=NAMES.map(n=>'<option value="'+n[0]+'">'+n[1]+'</option>').join('');
+$('langSel').onchange=()=>setLang($('langSel').value);
+let savedLang=null;try{savedLang=localStorage.getItem('frcLang')}catch(e){}
+setLang(savedLang||(navigator.language||'en').slice(0,2));
 
 evLabel();drawTrace();
 </script>
